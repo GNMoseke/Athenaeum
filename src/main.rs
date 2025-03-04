@@ -1,33 +1,82 @@
 use color_eyre::Result;
-use crossterm::event::{self, Event};
-use ratatui::{DefaultTerminal, Frame};
-use std::{
-    collections::HashSet,
-    ffi::OsStr,
-    fs::{read_dir, read_to_string},
-    io,
-    path::PathBuf,
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use ratatui::{
+    style::Stylize,
+    text::{Line, Text},
+    widgets::{Block, Paragraph, Widget},
+    DefaultTerminal, Frame,
 };
+use std::{collections::HashSet, ffi::OsStr, fs::read_dir, io, path::PathBuf};
 
-fn main() -> Result<()> {
-    color_eyre::install()?;
-    let terminal = ratatui::init();
-    let result = run(terminal);
+fn main() -> io::Result<()> {
+    let mut terminal = ratatui::init();
+    let app_res = App { exit: false }.run(&mut terminal);
     ratatui::restore();
-    result
+    app_res
 }
 
-fn run(mut terminal: DefaultTerminal) -> Result<()> {
-    loop {
-        terminal.draw(render)?;
-        if matches!(event::read()?, Event::Key(_)) {
-            break Ok(());
+struct App {
+    exit: bool,
+}
+
+impl App {
+    /// runs the application's main loop until the user quits
+    pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
+        while !self.exit {
+            terminal.draw(|frame| self.draw(frame))?;
+            self.handle_events()?;
+        }
+        Ok(())
+    }
+
+    fn handle_events(&mut self) -> io::Result<()> {
+        match event::read()? {
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                self.handle_key_event(key_event)
+            }
+            _ => {}
+        };
+        Ok(())
+    }
+
+    fn handle_key_event(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Char('q') => self.exit(),
+            _ => {}
         }
     }
+
+    fn draw(&self, frame: &mut Frame<'_>) {
+        frame.render_widget(
+            &FlashcardSet {
+                name: "Test".to_string(),
+                cards: vec![Flashcard {
+                    side_a: "A".to_string(),
+                    side_b: "B".to_string(),
+                }],
+            },
+            frame.area(),
+        )
+    }
+
+    fn exit(&mut self) { self.exit = true }
 }
 
-fn render(frame: &mut Frame) {
-    frame.render_widget("hello world", frame.area());
+impl Widget for &FlashcardSet {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let title = Line::from(self.name.clone().bold());
+        let block = Block::bordered()
+            .title(title.centered())
+            .border_set(ratatui::symbols::border::DOUBLE);
+        let text = Text::from(self.cards.first().unwrap().side_a.clone());
+        Paragraph::new(text)
+            .centered()
+            .block(block)
+            .render(area, buf)
+    }
 }
 
 /// Returns the name of and path to all csv files in a given dir
