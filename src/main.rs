@@ -6,76 +6,111 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
     DefaultTerminal, Frame,
 };
-use std::{collections::HashSet, ffi::OsStr, fs::read_dir, io, path::PathBuf};
+use std::{collections::HashSet, ffi::OsStr, fs::read_dir, io, path::PathBuf, time::Duration};
 
-fn main() -> io::Result<()> {
+fn main() -> color_eyre::Result<()> {
     let mut terminal = ratatui::init();
-    let app_res = App { exit: false }.run(&mut terminal);
+    let mut model = App::new();
+    while !model.exit {
+        // Render the current view
+        terminal.draw(|f| view(&mut model, f))?;
+
+        // Handle events and map to a Message
+        let mut current_msg = handle_event()?;
+
+        // Process updates as long as they return a non-None message
+        while current_msg.is_some() {
+            current_msg = update(&mut model, current_msg.unwrap());
+        }
+    }
+
     ratatui::restore();
-    app_res
+    Ok(())
 }
 
 struct App {
     exit: bool,
+    all_sets: HashSet<FlashcardSet>,
+    current_set: FlashcardSet,
+    current_card: Flashcard,
+}
+
+#[derive(PartialEq)]
+enum Message {
+    ChooseSet,
+    Confirm,
+    NextCard,
+    PreviousCard,
+    SetStats,
+    Flip,
+    Quit,
+}
+
+fn update(model: &mut App, msg: Message) -> Option<Message> {
+    match msg {
+        Message::ChooseSet => todo!(),
+        Message::Confirm => todo!(),
+        Message::NextCard => {
+            if let Some(next_card) = model.current_set.next_card() {
+                model.current_card = next_card.clone();
+                return None;
+            }
+            return Some(Message::SetStats);
+        }
+        Message::PreviousCard => {
+            if let Some(next_card) = model.current_set.prev_card() {
+                model.current_card = next_card.clone();
+            }
+        }
+        Message::Flip => {
+            model.current_card.flip();
+        }
+        Message::SetStats => todo!(),
+        Message::Quit => model.exit = true,
+    };
+    None
+}
+
+fn view(model: &mut App, frame: &mut Frame) {
+    let title = Line::from(model.current_set.name.clone().bold());
+    let block = Block::bordered()
+        .title(title.centered())
+        .border_set(ratatui::symbols::border::DOUBLE);
+    let text = Text::from(model.current_card.current_side());
+    let flashcard = Paragraph::new(text).centered().block(block);
+    frame.render_widget(flashcard, frame.area());
+}
+
+fn handle_event() -> color_eyre::Result<Option<Message>> {
+    if event::poll(Duration::from_millis(250))? {
+        if let Event::Key(key) = event::read()? {
+            if key.kind == event::KeyEventKind::Press {
+                return Ok(handle_key(key));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn handle_key(key: event::KeyEvent) -> Option<Message> {
+    match key.code {
+        KeyCode::Char('n') => Some(Message::NextCard),
+        KeyCode::Char('p') => Some(Message::PreviousCard),
+        KeyCode::Char(' ') => Some(Message::Flip),
+        KeyCode::Char('q') => Some(Message::Quit),
+        _ => None,
+    }
 }
 
 impl App {
-    /// runs the application's main loop until the user quits
-    pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
-        while !self.exit {
-            terminal.draw(|frame| self.draw(frame))?;
-            self.handle_events()?;
+    pub fn new() -> Self {
+        let set = make_test_set();
+        App {
+            exit: false,
+            all_sets: HashSet::new(),
+            current_set: set.clone(),
+            current_card: set.cards.first().unwrap().clone(),
         }
-        Ok(())
-    }
-
-    fn handle_events(&mut self) -> io::Result<()> {
-        match event::read()? {
-            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
-            }
-            _ => {}
-        };
-        Ok(())
-    }
-
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
-        match key_event.code {
-            KeyCode::Char('q') => self.exit(),
-            _ => {}
-        }
-    }
-
-    fn draw(&self, frame: &mut Frame<'_>) {
-        frame.render_widget(
-            &FlashcardSet {
-                name: "Test".to_string(),
-                cards: vec![Flashcard {
-                    side_a: "A".to_string(),
-                    side_b: "B".to_string(),
-                }],
-            },
-            frame.area(),
-        )
-    }
-
-    fn exit(&mut self) { self.exit = true }
-}
-
-impl Widget for &FlashcardSet {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
-    where
-        Self: Sized,
-    {
-        let title = Line::from(self.name.clone().bold());
-        let block = Block::bordered()
-            .title(title.centered())
-            .border_set(ratatui::symbols::border::DOUBLE);
-        let text = Text::from(self.cards.first().unwrap().side_a.clone());
-        Paragraph::new(text)
-            .centered()
-            .block(block)
-            .render(area, buf)
     }
 }
 
@@ -102,13 +137,18 @@ fn parse_set(csv_string: &str, name: String) -> FlashcardSet {
         .map(|line| {
             line.split_once(',')
                 .map(|(a, b)| Flashcard {
-                    side_a: a.trim().to_string(),
-                    side_b: b.trim().to_string(),
+                    front: a.trim().to_string(),
+                    back: b.trim().to_string(),
+                    current_side: CurrentSide::Front,
                 })
                 .unwrap()
         })
         .collect();
-    return FlashcardSet { name, cards };
+    return FlashcardSet {
+        name,
+        cards,
+        current_card_idx: 0,
+    };
 }
 
 #[derive(Debug)]
@@ -117,16 +157,54 @@ struct OneRunStats {
     incorrect: HashSet<Flashcard>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 struct FlashcardSet {
     name: String,
     cards: Vec<Flashcard>,
+    current_card_idx: usize,
 }
 
-#[derive(Debug, PartialEq)]
+impl FlashcardSet {
+    fn current_card(&mut self) -> Option<&mut Flashcard> {
+        self.cards.get_mut(self.current_card_idx)
+    }
+    fn next_card(&mut self) -> Option<&Flashcard> {
+        self.current_card_idx += 1;
+        self.cards.get(self.current_card_idx)
+    }
+
+    fn prev_card(&mut self) -> Option<&Flashcard> {
+        self.current_card_idx -= 1;
+        self.cards.get(self.current_card_idx)
+    }
+}
+#[derive(Debug, PartialEq, Clone)]
 struct Flashcard {
-    side_a: String,
-    side_b: String,
+    front: String,
+    back: String,
+    current_side: CurrentSide,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum CurrentSide {
+    Front,
+    Back,
+}
+
+impl Flashcard {
+    fn current_side(&self) -> String {
+        match self.current_side {
+            CurrentSide::Back => self.back.clone(),
+            CurrentSide::Front => self.front.clone(),
+        }
+    }
+
+    fn flip(&mut self) {
+        match self.current_side {
+            CurrentSide::Back => self.current_side = CurrentSide::Front,
+            CurrentSide::Front => self.current_side = CurrentSide::Back,
+        }
+    }
 }
 
 #[test]
@@ -143,14 +221,36 @@ fn parse_simple_set() {
             name: "test".to_string(),
             cards: vec![
                 Flashcard {
-                    side_a: "foo".to_string(),
-                    side_b: "bar".to_string()
+                    front: "foo".to_string(),
+                    back: "bar".to_string(),
+                    current_side: CurrentSide::Front
                 },
                 Flashcard {
-                    side_a: "baz".to_string(),
-                    side_b: "thenextone".to_string()
+                    front: "baz".to_string(),
+                    back: "thenextone".to_string(),
+                    current_side: CurrentSide::Front
                 }
-            ]
+            ],
+            current_card_idx: 0
         }
     );
+}
+
+fn make_test_set() -> FlashcardSet {
+    FlashcardSet {
+        name: "test".to_string(),
+        cards: vec![
+            Flashcard {
+                front: "foo".to_string(),
+                back: "bar".to_string(),
+                current_side: CurrentSide::Front,
+            },
+            Flashcard {
+                front: "baz".to_string(),
+                back: "thenextone".to_string(),
+                current_side: CurrentSide::Front,
+            },
+        ],
+        current_card_idx: 0,
+    }
 }
