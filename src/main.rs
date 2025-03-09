@@ -1,16 +1,18 @@
 use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
-    style::Stylize,
+    layout::{Constraint, Flex, Layout, Rect},
+    style::{Color, Stylize},
     text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
-    DefaultTerminal, Frame,
+    widgets::{Block, Padding, Paragraph},
+    Frame,
 };
 use std::{collections::HashSet, ffi::OsStr, fs::read_dir, io, path::PathBuf, time::Duration};
 
 fn main() -> color_eyre::Result<()> {
     let mut terminal = ratatui::init();
     let mut model = App::new();
+
     while !model.exit {
         // Render the current view
         terminal.draw(|f| view(&mut model, f))?;
@@ -30,32 +32,32 @@ fn main() -> color_eyre::Result<()> {
 
 struct App {
     exit: bool,
-    all_sets: HashSet<FlashcardSet>,
+    //all_sets: HashSet<FlashcardSet>,
     current_set: FlashcardSet,
     current_card: Flashcard,
 }
 
 #[derive(PartialEq)]
 enum Message {
-    ChooseSet,
-    Confirm,
+    //ChooseSet,
+    //Confirm,
     NextCard,
     PreviousCard,
-    SetStats,
+    //SetStats,
     Flip,
     Quit,
 }
 
 fn update(model: &mut App, msg: Message) -> Option<Message> {
     match msg {
-        Message::ChooseSet => todo!(),
-        Message::Confirm => todo!(),
+        //Message::ChooseSet => todo!(),
+        //Message::Confirm => todo!(),
         Message::NextCard => {
             if let Some(next_card) = model.current_set.next_card() {
                 model.current_card = next_card.clone();
                 return None;
             }
-            return Some(Message::SetStats);
+            //return Some(Message::SetStats);
         }
         Message::PreviousCard => {
             if let Some(next_card) = model.current_set.prev_card() {
@@ -65,20 +67,36 @@ fn update(model: &mut App, msg: Message) -> Option<Message> {
         Message::Flip => {
             model.current_card.flip();
         }
-        Message::SetStats => todo!(),
+        //Message::SetStats => todo!(),
         Message::Quit => model.exit = true,
     };
     None
 }
 
 fn view(model: &mut App, frame: &mut Frame) {
+    let color = match model.current_card.current_side {
+        CurrentSide::Front => Color::LightBlue,
+        CurrentSide::Back => Color::LightMagenta,
+    };
+
     let title = Line::from(model.current_set.name.clone().bold());
     let block = Block::bordered()
         .title(title.centered())
-        .border_set(ratatui::symbols::border::DOUBLE);
+        .padding(Padding::new(4, 4, 4, 4))
+        .border_set(ratatui::symbols::border::DOUBLE)
+        .fg(color);
     let text = Text::from(model.current_card.current_side());
+    let area = center(frame.area(), Constraint::Length(45), Constraint::Length(12));
     let flashcard = Paragraph::new(text).centered().block(block);
-    frame.render_widget(flashcard, frame.area());
+    frame.render_widget(flashcard, area);
+}
+
+fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
+    let [area] = Layout::horizontal([horizontal])
+        .flex(Flex::Center)
+        .areas(area);
+    let [area] = Layout::vertical([vertical]).flex(Flex::Center).areas(area);
+    area
 }
 
 fn handle_event() -> color_eyre::Result<Option<Message>> {
@@ -107,7 +125,7 @@ impl App {
         let set = make_test_set();
         App {
             exit: false,
-            all_sets: HashSet::new(),
+            //all_sets: HashSet::new(),
             current_set: set.clone(),
             current_card: set.cards.first().unwrap().clone(),
         }
@@ -151,12 +169,6 @@ fn parse_set(csv_string: &str, name: String) -> FlashcardSet {
     };
 }
 
-#[derive(Debug)]
-struct OneRunStats {
-    correct: HashSet<Flashcard>,
-    incorrect: HashSet<Flashcard>,
-}
-
 #[derive(Debug, PartialEq, Clone)]
 struct FlashcardSet {
     name: String,
@@ -165,16 +177,18 @@ struct FlashcardSet {
 }
 
 impl FlashcardSet {
-    fn current_card(&mut self) -> Option<&mut Flashcard> {
-        self.cards.get_mut(self.current_card_idx)
-    }
     fn next_card(&mut self) -> Option<&Flashcard> {
-        self.current_card_idx += 1;
-        self.cards.get(self.current_card_idx)
+        if self.current_card_idx <= self.cards.len() - 1 {
+            self.current_card_idx += 1;
+            return self.cards.get(self.current_card_idx);
+        }
+        return None;
     }
 
     fn prev_card(&mut self) -> Option<&Flashcard> {
-        self.current_card_idx -= 1;
+        if self.current_card_idx > 0 {
+            self.current_card_idx -= 1;
+        }
         self.cards.get(self.current_card_idx)
     }
 }
@@ -217,22 +231,7 @@ fn parse_simple_set() {
     let set = parse_set(set_csv, "test".to_string());
     assert_eq!(
         set,
-        FlashcardSet {
-            name: "test".to_string(),
-            cards: vec![
-                Flashcard {
-                    front: "foo".to_string(),
-                    back: "bar".to_string(),
-                    current_side: CurrentSide::Front
-                },
-                Flashcard {
-                    front: "baz".to_string(),
-                    back: "thenextone".to_string(),
-                    current_side: CurrentSide::Front
-                }
-            ],
-            current_card_idx: 0
-        }
+        make_test_set()
     );
 }
 
