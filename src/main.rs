@@ -1,5 +1,7 @@
+use clap::Parser;
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode};
+use rand::{rng, seq::SliceRandom};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
     style::{Color, Stylize},
@@ -7,11 +9,31 @@ use ratatui::{
     widgets::{Block, Padding, Paragraph},
     Frame,
 };
-use std::{collections::HashSet, ffi::OsStr, fs::read_dir, io, path::PathBuf, time::Duration};
+use std::{
+    ffi::OsStr,
+    fs::{self, read_dir},
+    io,
+    path::PathBuf,
+    time::Duration,
+};
+
+#[derive(Parser, Debug)]
+#[command(version = "0.1.0", about = "Simple TUI flashcards.")]
+struct Args {
+    #[arg(short('f'), long, help="Directory to find flashcard sets.")]
+    sets_dir: String,
+    #[arg(short, long, help="Name of the set to run. Case insensitive, no file extension.")]
+    set: String,
+    #[arg(short, long, default_value_t = false, help="Show flashcard contents in all caps.")]
+    capitalize: bool,
+    #[arg(short('r'), long, default_value_t = false, help="Shuffle set before starting.")]
+    shuffle: bool,
+}
 
 fn main() -> color_eyre::Result<()> {
     let mut terminal = ratatui::init();
-    let mut model = App::new();
+    let args = Args::parse();
+    let mut model = App::new(args.sets_dir, args.set, args.capitalize, args.shuffle);
 
     while !model.exit {
         // Render the current view
@@ -79,7 +101,16 @@ fn view(model: &mut App, frame: &mut Frame) {
         CurrentSide::Back => Color::LightMagenta,
     };
 
-    let title = Line::from(model.current_set.name.clone().bold());
+    let title = Line::from(
+        model
+            .current_set
+            .name
+            .to_uppercase()
+            .clone()
+            .bold()
+            .underlined()
+            .italic(),
+    );
     let block = Block::bordered()
         .title(title.centered())
         .padding(Padding::new(4, 4, 4, 4))
@@ -121,13 +152,28 @@ fn handle_key(key: event::KeyEvent) -> Option<Message> {
 }
 
 impl App {
-    pub fn new() -> Self {
-        let set = make_test_set();
+    pub fn new(sets_dir_path: String, set: String, capitalize: bool, shuffle: bool) -> Self {
+        let all_sets = find_all_sets(sets_dir_path);
+        // TODO: lots of error handling here instead of panicking
+        let sets = all_sets.unwrap();
+        let matching_sets = sets
+            .iter()
+            .filter(|s| s.0.to_lowercase() == set.to_lowercase())
+            .collect::<Vec<&(String, PathBuf)>>();
+        let set_path = matching_sets.first().unwrap();
+        let mut current_set = parse_set(
+            &fs::read_to_string(set_path.1.clone()).unwrap(),
+            set_path.0.clone(),
+            capitalize,
+        );
+        if shuffle {
+            current_set.cards.shuffle(&mut rng())
+        }
         App {
             exit: false,
             //all_sets: HashSet::new(),
-            current_set: set.clone(),
-            current_card: set.cards.first().unwrap().clone(),
+            current_set: current_set.clone(),
+            current_card: current_set.cards.first().unwrap().clone(),
         }
     }
 }
@@ -148,15 +194,23 @@ fn find_all_sets(fp: String) -> Result<Vec<(String, PathBuf)>, io::Error> {
 // - double quoted raw strings
 
 /// Returns a FlashcardSet from a given file path and name
-fn parse_set(csv_string: &str, name: String) -> FlashcardSet {
+fn parse_set(csv_string: &str, name: String, capitalize: bool) -> FlashcardSet {
     let cards = csv_string
         .trim()
         .split('\n')
         .map(|line| {
             line.split_once(',')
                 .map(|(a, b)| Flashcard {
-                    front: a.trim().to_string(),
-                    back: b.trim().to_string(),
+                    front: if capitalize {
+                        a.trim().to_uppercase().to_string()
+                    } else {
+                        a.trim().to_string()
+                    },
+                    back: if capitalize {
+                        b.trim().to_uppercase().to_string()
+                    } else {
+                        b.trim().to_string()
+                    },
                     current_side: CurrentSide::Front,
                 })
                 .unwrap()
@@ -228,28 +282,24 @@ fn parse_simple_set() {
     baz,thenextone
     ";
 
-    let set = parse_set(set_csv, "test".to_string());
+    let set = parse_set(set_csv, "test".to_string(), false);
     assert_eq!(
         set,
-        make_test_set()
+        FlashcardSet {
+            name: "test".to_string(),
+            cards: vec![
+                Flashcard {
+                    front: "foo".to_string(),
+                    back: "bar".to_string(),
+                    current_side: CurrentSide::Front,
+                },
+                Flashcard {
+                    front: "baz".to_string(),
+                    back: "thenextone".to_string(),
+                    current_side: CurrentSide::Front,
+                },
+            ],
+            current_card_idx: 0,
+        }
     );
-}
-
-fn make_test_set() -> FlashcardSet {
-    FlashcardSet {
-        name: "test".to_string(),
-        cards: vec![
-            Flashcard {
-                front: "foo".to_string(),
-                back: "bar".to_string(),
-                current_side: CurrentSide::Front,
-            },
-            Flashcard {
-                front: "baz".to_string(),
-                back: "thenextone".to_string(),
-                current_side: CurrentSide::Front,
-            },
-        ],
-        current_card_idx: 0,
-    }
 }
