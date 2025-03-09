@@ -1,8 +1,12 @@
 [package]
-name = "tui-flashcards"
+name = "athenaeum"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+
+[[bin]]
+name = "ath"
+path = "src/main.rs"
 
 [dependencies]
 ratatui = "0.29.0"
