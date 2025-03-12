@@ -1,6 +1,6 @@
 use clap::Parser;
-use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode};
+use flashcards::*;
 use rand::{rng, seq::SliceRandom};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
@@ -10,23 +10,37 @@ use ratatui::{
     Frame,
 };
 use std::{
-    ffi::OsStr,
-    fs::{self, read_dir},
-    io,
+    fs::{self},
     path::PathBuf,
     time::Duration,
 };
 
+pub mod flashcards;
+
 #[derive(Parser, Debug)]
 #[command(version = "0.1.0", about = "Simple TUI flashcards.")]
 struct Args {
-    #[arg(short('f'), long, help="Directory to find flashcard sets.")]
+    #[arg(short('f'), long, help = "Directory to find flashcard sets.")]
     sets_dir: String,
-    #[arg(short, long, help="Name of the set to run. Case insensitive, no file extension.")]
+    #[arg(
+        short,
+        long,
+        help = "Name of the set to run. Case insensitive, no file extension."
+    )]
     set: String,
-    #[arg(short, long, default_value_t = false, help="Show flashcard contents in all caps.")]
+    #[arg(
+        short,
+        long,
+        default_value_t = false,
+        help = "Show flashcard contents in all caps."
+    )]
     capitalize: bool,
-    #[arg(short('r'), long, default_value_t = false, help="Shuffle set before starting.")]
+    #[arg(
+        short('r'),
+        long,
+        default_value_t = false,
+        help = "Shuffle set before starting."
+    )]
     shuffle: bool,
 }
 
@@ -176,130 +190,4 @@ impl App {
             current_card: current_set.cards.first().unwrap().clone(),
         }
     }
-}
-
-/// Returns the name of and path to all csv files in a given dir
-fn find_all_sets(fp: String) -> Result<Vec<(String, PathBuf)>, io::Error> {
-    Ok(read_dir(fp)?
-        .into_iter()
-        .filter(|r| r.is_ok())
-        .map(|r| r.unwrap().path())
-        .filter(|r| r.extension() == Some(OsStr::new("csv")))
-        .map(|r| (r.file_stem().unwrap().to_str().unwrap().to_string(), r))
-        .collect())
-}
-
-// TODO: handle these:
-// - set metadata in comments
-// - double quoted raw strings
-
-/// Returns a FlashcardSet from a given file path and name
-fn parse_set(csv_string: &str, name: String, capitalize: bool) -> FlashcardSet {
-    let cards = csv_string
-        .trim()
-        .split('\n')
-        .map(|line| {
-            line.split_once(',')
-                .map(|(a, b)| Flashcard {
-                    front: if capitalize {
-                        a.trim().to_uppercase().to_string()
-                    } else {
-                        a.trim().to_string()
-                    },
-                    back: if capitalize {
-                        b.trim().to_uppercase().to_string()
-                    } else {
-                        b.trim().to_string()
-                    },
-                    current_side: CurrentSide::Front,
-                })
-                .unwrap()
-        })
-        .collect();
-    return FlashcardSet {
-        name,
-        cards,
-        current_card_idx: 0,
-    };
-}
-
-#[derive(Debug, PartialEq, Clone)]
-struct FlashcardSet {
-    name: String,
-    cards: Vec<Flashcard>,
-    current_card_idx: usize,
-}
-
-impl FlashcardSet {
-    fn next_card(&mut self) -> Option<&Flashcard> {
-        if self.current_card_idx <= self.cards.len() - 1 {
-            self.current_card_idx += 1;
-            return self.cards.get(self.current_card_idx);
-        }
-        return None;
-    }
-
-    fn prev_card(&mut self) -> Option<&Flashcard> {
-        if self.current_card_idx > 0 {
-            self.current_card_idx -= 1;
-        }
-        self.cards.get(self.current_card_idx)
-    }
-}
-#[derive(Debug, PartialEq, Clone)]
-struct Flashcard {
-    front: String,
-    back: String,
-    current_side: CurrentSide,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-enum CurrentSide {
-    Front,
-    Back,
-}
-
-impl Flashcard {
-    fn current_side(&self) -> String {
-        match self.current_side {
-            CurrentSide::Back => self.back.clone(),
-            CurrentSide::Front => self.front.clone(),
-        }
-    }
-
-    fn flip(&mut self) {
-        match self.current_side {
-            CurrentSide::Back => self.current_side = CurrentSide::Front,
-            CurrentSide::Front => self.current_side = CurrentSide::Back,
-        }
-    }
-}
-
-#[test]
-fn parse_simple_set() {
-    let set_csv = "
-    foo,bar
-    baz,thenextone
-    ";
-
-    let set = parse_set(set_csv, "test".to_string(), false);
-    assert_eq!(
-        set,
-        FlashcardSet {
-            name: "test".to_string(),
-            cards: vec![
-                Flashcard {
-                    front: "foo".to_string(),
-                    back: "bar".to_string(),
-                    current_side: CurrentSide::Front,
-                },
-                Flashcard {
-                    front: "baz".to_string(),
-                    back: "thenextone".to_string(),
-                    current_side: CurrentSide::Front,
-                },
-            ],
-            current_card_idx: 0,
-        }
-    );
 }
