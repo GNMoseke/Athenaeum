@@ -4,12 +4,13 @@ use flashcards::*;
 use rand::{rng, seq::SliceRandom};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
-    style::{Color, Stylize},
+    style::{palette::tailwind::SLATE, Color, Modifier, Style, Stylize},
     text::{Line, Text},
-    widgets::{Block, Padding, Paragraph},
+    widgets::{Block, List, ListDirection, Padding, Paragraph},
     Frame,
 };
 use std::{
+    collections::HashSet,
     fs::{self},
     path::PathBuf,
     time::Duration,
@@ -66,11 +67,18 @@ fn main() -> color_eyre::Result<()> {
     Ok(())
 }
 
+enum AppScreen {
+    SetSelection,
+    Flashcards,
+    Stats,
+}
+
 struct App {
     exit: bool,
-    //all_sets: HashSet<FlashcardSet>,
+    all_set_names: HashSet<String>,
     current_set: FlashcardSet,
     current_card: Flashcard,
+    current_screen: AppScreen,
 }
 
 #[derive(PartialEq)]
@@ -110,6 +118,36 @@ fn update(model: &mut App, msg: Message) -> Option<Message> {
 }
 
 fn view(model: &mut App, frame: &mut Frame) {
+    match model.current_screen {
+        AppScreen::SetSelection => set_select_view(model, frame),
+        AppScreen::Flashcards => flashcards_view(model, frame),
+        AppScreen::Stats => todo!(),
+    }
+}
+
+fn set_select_view(model: &mut App, frame: &mut Frame) {
+    let list = List::new(model.all_set_names.clone())
+        .block(
+            Block::bordered()
+                .title(
+                    Line::raw("Choose Set")
+                        .bold()
+                        .italic()
+                        .underlined()
+                        .centered(),
+                )
+                .border_set(ratatui::symbols::border::DOUBLE),
+        )
+        .style(Style::new().white())
+        .highlight_style(Style::new().bg(SLATE.c800).add_modifier(Modifier::BOLD))
+        .highlight_symbol(">>")
+        .repeat_highlight_symbol(true)
+        .direction(ListDirection::TopToBottom);
+    let area = center(frame.area(), Constraint::Length(45), Constraint::Length(12));
+    frame.render_widget(list, area);
+}
+
+fn flashcards_view(model: &mut App, frame: &mut Frame) {
     let color = match model.current_card.current_side {
         CurrentSide::Front => Color::LightBlue,
         CurrentSide::Back => Color::LightMagenta,
@@ -185,7 +223,8 @@ impl App {
         }
         App {
             exit: false,
-            //all_sets: HashSet::new(),
+            all_set_names: HashSet::from_iter(sets.iter().map(|x| x.0.clone())),
+            current_screen: AppScreen::SetSelection,
             current_set: current_set.clone(),
             current_card: current_set.cards.first().unwrap().clone(),
         }
