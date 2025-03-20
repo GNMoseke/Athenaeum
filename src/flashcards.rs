@@ -52,6 +52,14 @@ impl Flashcard {
             CurrentSide::Front => self.current_side = CurrentSide::Back,
         }
     }
+
+    pub(crate) fn calc_vert_size(&self) -> u16 {
+        // FIXME: so many bad things here
+        if self.front.len() >= self.back.len() {
+            return std::cmp::max(11, (10 + self.front.lines().count()).try_into().unwrap());
+        }
+        return std::cmp::max(11, (10 + self.back.lines().count()).try_into().unwrap());
+    }
 }
 
 // MARK: Parsing Funcs

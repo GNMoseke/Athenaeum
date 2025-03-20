@@ -127,11 +127,15 @@ fn view(model: &mut App, frame: &mut Frame) {
     );
     let block = Block::bordered()
         .title(title.centered())
-        .padding(Padding::new(4, 4, 4, 4))
+        .padding(Padding::new(4, 4, 4, 0))
         .border_set(ratatui::symbols::border::DOUBLE)
         .fg(color);
     let text = Text::from(model.current_card.current_side());
-    let area = center(frame.area(), Constraint::Length(45), Constraint::Length(12));
+    let area = center(
+        frame.area(),
+        Constraint::Length(44),
+        Constraint::Length(model.current_card.calc_vert_size()),
+    );
     let flashcard = Paragraph::new(text).centered().block(block);
     frame.render_widget(flashcard, area);
 }
