@@ -67,31 +67,30 @@ pub(crate) fn find_all_sets(fp: String) -> Result<Vec<(String, PathBuf)>, io::Er
         .collect())
 }
 
-// TODO: handle these:
-// - set metadata in comments
-// - double quoted raw strings
-
 /// Returns a FlashcardSet from a given file path and name
 pub(crate) fn parse_set(csv_string: &str, name: String, capitalize: bool) -> FlashcardSet {
-    let cards = csv_string
-        .trim()
-        .split('\n')
-        .map(|line| {
-            line.split_once(',')
-                .map(|(a, b)| Flashcard {
-                    front: if capitalize {
-                        a.trim().to_uppercase().to_string()
-                    } else {
-                        a.trim().to_string()
-                    },
-                    back: if capitalize {
-                        b.trim().to_uppercase().to_string()
-                    } else {
-                        b.trim().to_string()
-                    },
-                    current_side: CurrentSide::Front,
-                })
-                .unwrap()
+    let mut read = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .trim(csv::Trim::All)
+        .quoting(true)
+        .from_reader(csv_string.trim().as_bytes());
+    let cards = read
+        .records()
+        .map(|card| {
+            // FIXME: so many bad things here
+            let mut front = card.as_ref().unwrap().get(0).unwrap().to_string();
+            let mut back = card.unwrap().get(1).unwrap().to_string();
+
+            if capitalize {
+                front = front.to_uppercase();
+                back = back.to_uppercase();
+            }
+
+            Flashcard {
+                front,
+                back,
+                current_side: CurrentSide::Front,
+            }
         })
         .collect();
     return FlashcardSet {
@@ -125,6 +124,25 @@ fn parse_simple_set() {
                     current_side: CurrentSide::Front,
                 },
             ],
+            current_card_idx: 0,
+        }
+    );
+}
+
+#[test]
+fn parse_newline_literals() {
+    let set_csv = "\"line1\nline2\",baz";
+
+    let set = parse_set(set_csv, "test".to_string(), false);
+    assert_eq!(
+        set,
+        FlashcardSet {
+            name: "test".to_string(),
+            cards: vec![Flashcard {
+                front: "line1\nline2".to_string(),
+                back: "baz".to_string(),
+                current_side: CurrentSide::Front,
+            },],
             current_card_idx: 0,
         }
     );
