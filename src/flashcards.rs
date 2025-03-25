@@ -76,7 +76,7 @@ pub(crate) fn find_all_sets(fp: String) -> Result<Vec<(String, PathBuf)>, io::Er
 }
 
 /// Returns a FlashcardSet from a given file path and name
-pub(crate) fn parse_set(csv_string: &str, name: String, capitalize: bool) -> FlashcardSet {
+pub(crate) fn parse_set(csv_string: &str, name: String, capitalize: bool, reverse: bool) -> FlashcardSet {
     let mut read = csv::ReaderBuilder::new()
         .has_headers(false)
         .trim(csv::Trim::All)
@@ -97,7 +97,7 @@ pub(crate) fn parse_set(csv_string: &str, name: String, capitalize: bool) -> Fla
             Flashcard {
                 front,
                 back,
-                current_side: CurrentSide::Front,
+                current_side: if reverse { CurrentSide::Back } else { CurrentSide::Front },
             }
         })
         .collect();
@@ -115,7 +115,7 @@ fn parse_simple_set() {
     baz,thenextone
     ";
 
-    let set = parse_set(set_csv, "test".to_string(), false);
+    let set = parse_set(set_csv, "test".to_string(), false, false);
     assert_eq!(
         set,
         FlashcardSet {
@@ -141,7 +141,7 @@ fn parse_simple_set() {
 fn parse_newline_literals() {
     let set_csv = "\"line1\nline2\",baz";
 
-    let set = parse_set(set_csv, "test".to_string(), false);
+    let set = parse_set(set_csv, "test".to_string(), false, false);
     assert_eq!(
         set,
         FlashcardSet {

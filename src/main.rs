@@ -22,12 +22,14 @@ pub mod flashcards;
 struct Args {
     #[arg(short('f'), long, help = "Directory to find flashcard sets.")]
     sets_dir: String,
+
     #[arg(
         short,
         long,
         help = "Name of the set to run. Case insensitive, no file extension."
     )]
     set: String,
+
     #[arg(
         short,
         long,
@@ -35,6 +37,7 @@ struct Args {
         help = "Show flashcard contents in all caps."
     )]
     capitalize: bool,
+
     #[arg(
         short('r'),
         long,
@@ -42,12 +45,26 @@ struct Args {
         help = "Shuffle set before starting."
     )]
     shuffle: bool,
+
+    #[arg(
+        short('b'),
+        long,
+        default_value_t = false,
+        help = "Reverse the side of all cards befere starting."
+    )]
+    reverse: bool,
 }
 
 fn main() -> color_eyre::Result<()> {
     let mut terminal = ratatui::init();
     let args = Args::parse();
-    let mut model = App::new(args.sets_dir, args.set, args.capitalize, args.shuffle);
+    let mut model = App::new(
+        args.sets_dir,
+        args.set,
+        args.capitalize,
+        args.shuffle,
+        args.reverse,
+    );
 
     while !model.exit {
         // Render the current view
@@ -170,7 +187,13 @@ fn handle_key(key: event::KeyEvent) -> Option<Message> {
 }
 
 impl App {
-    pub fn new(sets_dir_path: String, set: String, capitalize: bool, shuffle: bool) -> Self {
+    pub fn new(
+        sets_dir_path: String,
+        set: String,
+        capitalize: bool,
+        shuffle: bool,
+        reverse: bool,
+    ) -> Self {
         let all_sets = find_all_sets(sets_dir_path);
         // TODO: lots of error handling here instead of panicking
         let sets = all_sets.unwrap();
@@ -183,6 +206,7 @@ impl App {
             &fs::read_to_string(set_path.1.clone()).unwrap(),
             set_path.0.clone(),
             capitalize,
+            reverse,
         );
         if shuffle {
             current_set.cards.shuffle(&mut rng())
