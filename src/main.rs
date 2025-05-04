@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
     style::{Color, Stylize},
     text::{Line, Text},
-    widgets::{Block, Padding, Paragraph},
+    widgets::{Block, Padding, Paragraph, Wrap},
     Frame,
 };
 use std::{
@@ -153,7 +153,10 @@ fn view(model: &mut App, frame: &mut Frame) {
         Constraint::Length(44),
         Constraint::Length(model.current_card.calc_vert_size()),
     );
-    let flashcard = Paragraph::new(text).centered().block(block);
+    let flashcard = Paragraph::new(text)
+        .wrap(Wrap { trim: true })
+        .centered()
+        .block(block);
     frame.render_widget(flashcard, area);
 }
 
