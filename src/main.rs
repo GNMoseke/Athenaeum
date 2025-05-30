@@ -142,8 +142,16 @@ fn view(model: &mut App, frame: &mut Frame) {
             .underlined()
             .italic(),
     );
+    let bottom = Line::from(
+        "(".to_string()
+            + &(model.current_set.current_card_idx + 1).to_string()
+            + "/"
+            + &(model.current_set.cards.len()).to_string()
+            + ")",
+    );
     let block = Block::bordered()
         .title(title.centered())
+        .title_bottom(bottom.centered())
         .padding(Padding::new(4, 4, 4, 0))
         .border_set(ratatui::symbols::border::DOUBLE)
         .fg(color);
